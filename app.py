@@ -1,0 +1,50 @@
+import os
+from flask import Flask, request, jsonify
+from sentence_transformers import SentenceTransformer
+from supabase import create_client
+from groq import Groq
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = Flask(__name__)
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+def search_documents(query, top_k=6):
+    query_embedding = model.encode(query).tolist()
+    result = supabase.rpc("match_documents", {
+        "query_embedding": query_embedding,
+        "match_count": top_k
+    }).execute()
+    return [row["content"] for row in result.data]
+
+def answer_question(question):
+    context_chunks = search_documents(question)
+    context = "\n\n".join(context_chunks)
+    prompt = f"""You are a helpful assistant. Answer the user's question using ONLY the context below.
+If the answer is not in the context, say "I don't have that information."
+
+Context:
+{context}
+
+Question: {question}
+Answer:"""
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+@app.route("/ask", methods=["POST"])
+def ask():
+    data = request.json
+    question = data.get("question", "")
+    if not question:
+        return jsonify({"error": "No question provided"}), 400
+    answer = answer_question(question)
+    return jsonify({"answer": answer})
+
+if __name__ == "__main__":
+    app.run(port=5000)
