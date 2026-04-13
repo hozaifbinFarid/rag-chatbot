@@ -1,6 +1,6 @@
 import os
+import requests as req
 from flask import Flask, request, jsonify
-from sentence_transformers import SentenceTransformer
 from supabase import create_client
 from groq import Groq
 from dotenv import load_dotenv
@@ -10,10 +10,23 @@ load_dotenv()
 app = Flask(__name__)
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-model = SentenceTransformer("all-MiniLM-L6-v2")
+
+HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+
+def get_embedding(text):
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+    response = req.post(
+        HF_API_URL,
+        headers=headers,
+        json={"inputs": text, "options": {"wait_for_model": True}}
+    )
+    return response.json()
 
 def search_documents(query, top_k=6):
-    query_embedding = model.encode(query).tolist()
+    query_embedding = get_embedding(query)
+    if isinstance(query_embedding[0], list):
+        query_embedding = query_embedding[0]
     result = supabase.rpc("match_documents", {
         "query_embedding": query_embedding,
         "match_count": top_k
@@ -46,5 +59,9 @@ def ask():
     answer = answer_question(question)
     return jsonify({"answer": answer})
 
+@app.route("/")
+def home():
+    return jsonify({"status": "RAG Chatbot is running!"})
+
 if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
