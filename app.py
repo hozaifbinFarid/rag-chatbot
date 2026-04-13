@@ -21,12 +21,20 @@ def get_embedding(text):
         headers=headers,
         json={"inputs": text, "options": {"wait_for_model": True}}
     )
-    return response.json()
+    result = response.json()
+    if isinstance(result, list) and len(result) > 0:
+        if isinstance(result[0], list):
+            return result[0]
+        if isinstance(result[0], float):
+            return result
+    if isinstance(result, dict) and "error" in result:
+        raise ValueError(f"HF API error: {result['error']}")
+    return result
 
 def search_documents(query, top_k=6):
     query_embedding = get_embedding(query)
-    if isinstance(query_embedding[0], list):
-        query_embedding = query_embedding[0]
+    if not isinstance(query_embedding, list):
+        raise ValueError(f"Unexpected embedding format: {type(query_embedding)}")
     result = supabase.rpc("match_documents", {
         "query_embedding": query_embedding,
         "match_count": top_k
@@ -56,8 +64,11 @@ def ask():
     question = data.get("question", "")
     if not question:
         return jsonify({"error": "No question provided"}), 400
-    answer = answer_question(question)
-    return jsonify({"answer": answer})
+    try:
+        answer = answer_question(question)
+        return jsonify({"answer": answer})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/")
 def home():
