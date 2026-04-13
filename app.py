@@ -1,6 +1,6 @@
 import os
-import requests as req
 from flask import Flask, request, jsonify
+from fastembed import TextEmbedding
 from supabase import create_client
 from groq import Groq
 from dotenv import load_dotenv
@@ -10,31 +10,14 @@ load_dotenv()
 app = Flask(__name__)
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+embedding_model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
 
 def get_embedding(text):
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
-    response = req.post(
-        HF_API_URL,
-        headers=headers,
-        json={"inputs": text, "options": {"wait_for_model": True}}
-    )
-    result = response.json()
-    if isinstance(result, list) and len(result) > 0:
-        if isinstance(result[0], list):
-            return result[0]
-        if isinstance(result[0], float):
-            return result
-    if isinstance(result, dict) and "error" in result:
-        raise ValueError(f"HF API error: {result['error']}")
-    return result
+    embeddings = list(embedding_model.embed([text]))
+    return embeddings[0].tolist()
 
 def search_documents(query, top_k=6):
     query_embedding = get_embedding(query)
-    if not isinstance(query_embedding, list):
-        raise ValueError(f"Unexpected embedding format: {type(query_embedding)}")
     result = supabase.rpc("match_documents", {
         "query_embedding": query_embedding,
         "match_count": top_k

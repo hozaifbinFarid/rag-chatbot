@@ -1,8 +1,6 @@
 flask
-sentence-transformers
+fastembed
 supabase
 groq
 python-dotenv
-pypdf
-python-telegram-bot
 gunicorn
