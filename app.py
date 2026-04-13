@@ -1,6 +1,7 @@
 import os
+import requests as req
+import numpy as np
 from flask import Flask, request, jsonify
-from fastembed import TextEmbedding
 from supabase import create_client
 from groq import Groq
 from dotenv import load_dotenv
@@ -10,11 +11,25 @@ load_dotenv()
 app = Flask(__name__)
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-embedding_model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
+
+HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 def get_embedding(text):
-    embeddings = list(embedding_model.embed([text]))
-    return embeddings[0].tolist()
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    response = req.post(
+        HF_API_URL,
+        headers=headers,
+        json={"inputs": text, "options": {"wait_for_model": True}}
+    )
+    result = response.json()
+    if isinstance(result, list):
+        if isinstance(result[0], float):
+            return result
+        if isinstance(result[0], list):
+            arr = np.array(result)
+            return arr.mean(axis=0).tolist()
+    raise ValueError(f"Unexpected response: {result}")
 
 def search_documents(query, top_k=6):
     query_embedding = get_embedding(query)

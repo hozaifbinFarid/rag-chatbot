@@ -1,6 +1,10 @@
 flask
-fastembed
+numpy
+onnxruntime
+tokenizers
+huggingface-hub
 supabase
 groq
 python-dotenv
 gunicorn
+requests
